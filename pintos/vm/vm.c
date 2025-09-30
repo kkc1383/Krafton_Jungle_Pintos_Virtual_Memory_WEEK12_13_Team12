@@ -49,12 +49,30 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
   struct supplemental_page_table *spt = &thread_current()->spt;
 
   /* Check wheter the upage is already occupied or not. */
-  if (spt_find_page(spt, upage) == NULL) {
+  if (spt_find_page(spt, upage) == NULL) {  //일단 새로 만들 페이지인데, spt에 이미 있어서는 안됨.
     /* TODO: Create the page, fetch the initialier according to the VM type,
      * TODO: and then create "uninit" page struct by calling uninit_new. You
      * TODO: should modify the field after calling the uninit_new. */
 
+    struct page *page =
+        (struct page *)malloc(sizeof(struct page));  // page 크기만큼만 할당하면 된다.
+    if (!page) goto err;
+
+    // page 필드 채우는건 아래 uninit_new에서 해줌
+    switch (type) {  // type에 맞게 uninit 페이지를 생성
+      case VM_ANON:
+        uninit_new(page, upage, init, type, aux, anon_initializer);
+        break;
+      case VM_FILE:
+        uninit_new(page, upage, init, type, aux, file_backed_initializer);
+        break;
+      default:
+        goto err;
+    }
+    page->writable = writable;  // writable 필드 채우기
+
     /* TODO: Insert the page into the spt. */
+    spt_insert_page(spt, page);
   }
 err:
   return false;
@@ -154,7 +172,7 @@ void vm_dealloc_page(struct page *page) {
 }
 
 /* Claim the page that allocate on VA. */
-bool vm_claim_page(void *va UNUSED) {
+bool vm_claim_page(void *va) {
   struct page *page = NULL;
   /* TODO: Fill this function */
   if ((page = spt_find_page(&thread_current()->spt, va)) == NULL) {
