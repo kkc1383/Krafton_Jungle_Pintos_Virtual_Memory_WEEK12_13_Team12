@@ -811,6 +811,15 @@ static bool setup_stack(struct intr_frame *if_) {
    * TODO: You should mark the page is stack. */
   /* TODO: Your code goes here */
 
-  return success;
+  // page 생성, spt 등록 해줌
+  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) return false;
+  // frame 생성, 페이지 테이블 등록 해줌
+  if (!vm_claim_page(stack_bottom)) {
+    return false;
+  }
+  if_->rsp = USER_STACK;  //일단 페이지 하나만큼만 빈공간 벌려놓고, 그 다음부터 자율적으로 싣는것
+  return true;
+  // setup_stack은 단 한번만 실행한다. 그 이후부터는 CPU가 자동으로 관리함
+  // load 함수는 프로세스당 한번밖에 실행되지 않음, 가상 메모리 처음 설정할때 말이다.
 }
 #endif /* VM */

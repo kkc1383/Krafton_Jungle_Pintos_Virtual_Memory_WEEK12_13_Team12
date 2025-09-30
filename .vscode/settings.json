@@ -41,6 +41,9 @@
         "atomic": "c",
         "debug.h": "c",
         "string.h": "c",
-        "vm.h": "c"
+        "vm.h": "c",
+        "uninit.h": "c",
+        "anon.h": "c",
+        "hash.h": "c"
     }
 }
