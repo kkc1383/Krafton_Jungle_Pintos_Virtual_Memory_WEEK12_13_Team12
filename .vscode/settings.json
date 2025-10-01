@@ -47,6 +47,7 @@
         "hash.h": "c",
         "limits": "c",
         "disk.h": "c",
-        "vaddr.h": "c"
+        "vaddr.h": "c",
+        "tss.h": "c"
     }
 }

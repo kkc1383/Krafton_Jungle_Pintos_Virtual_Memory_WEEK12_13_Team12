@@ -32,14 +32,6 @@ struct fork_aux {
   struct semaphore fork_sema;    // fork가 끝날때까지 기다리게 하려고 semaphore
 };
 
-struct lazy_load_arg {
-  struct file *file;    // 어떤 파일인지 링크
-  off_t ofs;            // 해당 파일의 어디부터 읽어야 하는지 오프셋
-  uint32_t read_bytes;  // 몇 바이트를 읽어야 하는지
-  uint32_t zero_bytes;  // 몇 바이트를 0으로 채워야 하는지
-  void *kva;            // 데이터를 실제로 올려야 하는 주소
-};
-
 static void process_cleanup(void);
 static bool load(const char **argv, struct intr_frame *if_);
 static void initd(void *f_name);
@@ -810,7 +802,7 @@ static bool setup_stack(struct intr_frame *if_) {
   /* TODO: Your code goes here */
 
   // page 생성, spt 등록 해줌
-  if (!vm_alloc_page(VM_ANON, stack_bottom, true)) {  // VM_MARKER_0은 나중에
+  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {  // VM_MARKER_0은 나중에
     return false;
   }
   // frame 생성, 페이지 테이블 등록 해줌

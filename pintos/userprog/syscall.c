@@ -138,7 +138,8 @@ void system_exit(int status) {
     }
   }
   lock_release(&parent->children_lock);  // child_list 순회하기 때문에
-  printf("%s: exit(%d)\n", curr->name, status);
+  printf("%s: exit(", curr->name);
+  printf("%d)\n", status);
   thread_exit();
 }
 static pid_t system_fork(const char *thread_name, struct intr_frame *f) { return process_fork(thread_name, f); }
