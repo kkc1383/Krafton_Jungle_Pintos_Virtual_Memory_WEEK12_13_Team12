@@ -114,8 +114,7 @@ tid_t process_fork(const char *name, struct intr_frame *if_) {
   lock_acquire(&aux->parent->children_lock);
   // child_list 순회
   struct list_elem *e;
-  for (e = list_begin(&aux->parent->child_list); e != list_end(&aux->parent->child_list);
-       e = list_next(e)) {
+  for (e = list_begin(&aux->parent->child_list); e != list_end(&aux->parent->child_list); e = list_next(e)) {
     struct child_info *child = list_entry(e, struct child_info, child_elem);
     if (child->child_tid == tid) {
       if (child->has_exited && !child->fork_success) {
@@ -163,7 +162,7 @@ static bool duplicate_pte(uint64_t *pte, void *va, void *aux) {
    *    TODO: check whether parent's page is writable or not (set WRITABLE
    *    TODO: according to the result). */
   memcpy(newpage, parent_page, PGSIZE);  // 부모페이지에서, 자식 새 페이지로 데이터 옮기기
-  writable = is_writable(pte);  // 전달받은 pte로부터 부모페이지의 writable값을 전달받기
+  writable = is_writable(pte);           // 전달받은 pte로부터 부모페이지의 writable값을 전달받기
 
   /* 5. Add new page to child's page table at address VA with WRITABLE
    *    permission. */
@@ -211,8 +210,7 @@ static void __do_fork(struct fork_aux *aux) {
    * TODO:       the resources of parent.*/
   for (int i = 0; i <= parent->fd_max; i++) {
     if (!parent->fd_table[i]) continue;  //등록안된 fd라면 건너뛰기
-    if (parent->fd_table[i] == get_std_in() ||
-        parent->fd_table[i] == get_std_out()) {  // 표준 입출력일 경우
+    if (parent->fd_table[i] == get_std_in() || parent->fd_table[i] == get_std_out()) {  // 표준 입출력일 경우
       current->fd_table[i] = parent->fd_table[i];
     } else {                                      // 일반 파일일 경우
       if (parent->fd_table[i]->dup_count >= 2) {  // dup2 관게인 file일 경우
@@ -276,7 +274,7 @@ int process_exec(void *f_name) {
   for (token = strtok_r(f_name, " ", &save_ptr); token != NULL;
        token = strtok_r(NULL, " ", &save_ptr)) {           // 공백이 있는 만큼
     argv[i] = malloc((strlen(token) + 1) * sizeof(char));  // 인자 하나 당 한 줄씩 할당
-    memcpy(argv[i++], token, strlen(token) + 1);  // 값 옮겨 쓰기, 널 문자 포함해서 복사
+    memcpy(argv[i++], token, strlen(token) + 1);           // 값 옮겨 쓰기, 널 문자 포함해서 복사
   }
   argv[i] = NULL;  //마지막 인자는 무조건 NULL로 마무리
   /* argument parsing end */
@@ -337,9 +335,8 @@ int process_wait(tid_t child_tid UNUSED) {
     }
   }
   lock_release(&curr->children_lock);
-  if (!target_child) return -1;  // 찾는 자식이 없다면 -1
-  if (target_child->has_exited == false)
-    sema_down(&target_child->wait_sema);  //자식이 종료될 때까지 기다림
+  if (!target_child) return -1;                                                // 찾는 자식이 없다면 -1
+  if (target_child->has_exited == false) sema_down(&target_child->wait_sema);  //자식이 종료될 때까지 기다림
 
   // 자식이 종료되었다면 child_list에서 제거 및 메모리 반환
   lock_acquire(&curr->children_lock);
@@ -361,15 +358,18 @@ void process_exit(void) {
   struct thread *curr = thread_current();
   for (int i = 0; i <= curr->fd_max; i++) {
     if (!curr->fd_table[i]) continue;
-    if (curr->fd_table[i] == get_std_in() ||
-        curr->fd_table[i] == get_std_out()) {  //표준 입출력일 경우
+    if (curr->fd_table[i] == get_std_in() || curr->fd_table[i] == get_std_out()) {  //표준 입출력일 경우
       curr->fd_table[i] = NULL;
     } else {
-      system_close(
-          i);  // dup2라면 dup_count만 깎을 테고, 아니라면 file_close 해 줌 마지막 NULL 처리도 해줌
+      system_close(i);  // dup2라면 dup_count만 깎을 테고, 아니라면 file_close 해 줌 마지막 NULL 처리도 해줌
     }
   }
   free(curr->fd_table);  // fd_table 껍데기 반환
+
+  if (curr->running_file) {  //현재 실행중인 파일 닫기
+    file_close(curr->running_file);
+    curr->running_file = NULL;
+  }
 
   if (!strcmp("main", curr->name)) {  // main 쓰레드 종료할때 표준 입출력 주소 반환
     free(get_std_in());
@@ -468,8 +468,8 @@ struct ELF64_PHDR {
 
 static bool setup_stack(struct intr_frame *if_);
 static bool validate_segment(const struct Phdr *, struct file *);
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
-                         uint32_t zero_bytes, bool writable);
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes,
+                         bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
  * Stores the executable's entry point into *RIP
@@ -495,11 +495,13 @@ static bool load(const char **argv, struct intr_frame *if_) {
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
+  // 현재 실행중인 파일을 수정하지 못하게
+  t->running_file = file;
+  file_deny_write(file);
 
   /* Read and verify executable header. */
-  if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
-      memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 ||
-      ehdr.e_machine != 0x3E  // amd64
+  if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) ||
+      ehdr.e_type != 2 || ehdr.e_machine != 0x3E  // amd64
       || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024) {
     printf("load: %s: error loading executable\n", file_name);
     goto done;
@@ -545,8 +547,7 @@ static bool load(const char **argv, struct intr_frame *if_) {
             read_bytes = 0;
             zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
           }
-          if (!load_segment(file, file_page, (void *)mem_page, read_bytes, zero_bytes, writable))
-            goto done;
+          if (!load_segment(file, file_page, (void *)mem_page, read_bytes, zero_bytes, writable)) goto done;
         } else
           goto done;
         break;
@@ -563,7 +564,7 @@ static bool load(const char **argv, struct intr_frame *if_) {
    * TODO: Implement argument passing (see project2/argument_passing.html). */
   int argc = 0;
   int str_len = 0;
-  while (argv[argc] != NULL) {  // argv 순회하면서 str_len 다 더하기, 겸사 겸사 argc도 계산
+  while (argv[argc] != NULL) {          // argv 순회하면서 str_len 다 더하기, 겸사 겸사 argc도 계산
     str_len += strlen(argv[argc]) + 1;  // 널문자까지 더해줘야해서 +1
     argc++;
   }
@@ -573,15 +574,15 @@ static bool load(const char **argv, struct intr_frame *if_) {
   bool is_need_8byte = ((argc + 1 + ((str_len + 7) / 8) + 1) % 2);
 
   char **moved_argv_ptr = malloc(argc * sizeof(char *));
-  for (int i = argc - 1; i >= 0; i--) {  //실제 인자 문자열을 넣는 동작
-    int length = strlen(argv[i]) + 1;    // 메모리에 집어 넣을 문자열 길이
+  for (int i = argc - 1; i >= 0; i--) {                     //실제 인자 문자열을 넣는 동작
+    int length = strlen(argv[i]) + 1;                       // 메모리에 집어 넣을 문자열 길이
     if_->rsp = memcpy(if_->rsp - length, argv[i], length);  // rsp-length부터 값 집어넣기
-    moved_argv_ptr[i] = if_->rsp;  // 집어넣은 각 문자열 시작지점 저장해두기
+    moved_argv_ptr[i] = if_->rsp;                           // 집어넣은 각 문자열 시작지점 저장해두기
   }
 
   if_->rsp = if_->rsp & (~0x7);                              // 8byte로 정렬
   if (is_need_8byte) if_->rsp = memset(if_->rsp - 8, 0, 8);  // 8byte padding
-  if_->rsp = memset(if_->rsp - 8, 0, 8);  // argv[argc], 즉 널문자가 담긴 라인
+  if_->rsp = memset(if_->rsp - 8, 0, 8);                     // argv[argc], 즉 널문자가 담긴 라인
 
   for (int i = argc - 1; i >= 0; i--) {  // 문자열 저장해둔 포인터 집어넣기
     if_->rsp = memcpy(if_->rsp - 8, &moved_argv_ptr[i], 8);
@@ -592,7 +593,6 @@ static bool load(const char **argv, struct intr_frame *if_) {
   free(moved_argv_ptr);
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
   return success;
 }
 
@@ -653,8 +653,8 @@ static bool install_page(void *upage, void *kpage, bool writable);
  *
  * Return true if successful, false if a memory allocation error
  * or disk read error occurs. */
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
-                         uint32_t zero_bytes, bool writable) {
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes,
+                         bool writable) {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);
   ASSERT(ofs % PGSIZE == 0);
@@ -738,8 +738,7 @@ static bool lazy_load_segment(struct page *page, void *aux) {
 
   // file에서 필요한 만큼만 읽는다. 읽어야 할 만큼 못 읽었으면 실패
   file_seek(lla_aux->file, lla_aux->ofs);  // offset 설정
-  if (file_read(lla_aux->file, page->frame->kva, lla_aux->read_bytes) !=
-      (uint32_t)lla_aux->read_bytes) {
+  if (file_read(lla_aux->file, page->frame->kva, lla_aux->read_bytes) != (uint32_t)lla_aux->read_bytes) {
     free(aux);     // aux 구조체 반환
     return false;  // 실패했음을 알림
   }
@@ -765,8 +764,8 @@ static bool lazy_load_segment(struct page *page, void *aux) {
  *
  * Return true if successful, false if a memory allocation error
  * or disk read error occurs. */
-static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
-                         uint32_t zero_bytes, bool writable) {
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes,
+                         bool writable) {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);
   ASSERT(ofs % PGSIZE == 0);
@@ -784,8 +783,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
     /* aux 구조체 필드 초기화 */
     aux->file = file;
     aux->ofs = ofs;
-    aux->read_bytes = page_read_bytes;  //이거 중요함, 그냥 read_bytes가 아니라 이 페이지에서 읽을
-                                        //페이지 바이트가 필요함
+    aux->read_bytes = page_read_bytes;  //그냥 read_bytes가 아니라 이 페이지에서 읽을 페이지 바이트가 필요함
     aux->zero_bytes = page_zero_bytes;
     if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, aux)) {
       free(aux);  // 실패 시에 aux 구조체 반환 해야함.
@@ -812,7 +810,9 @@ static bool setup_stack(struct intr_frame *if_) {
   /* TODO: Your code goes here */
 
   // page 생성, spt 등록 해줌
-  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) return false;
+  if (!vm_alloc_page(VM_ANON, stack_bottom, true)) {  // VM_MARKER_0은 나중에
+    return false;
+  }
   // frame 생성, 페이지 테이블 등록 해줌
   if (!vm_claim_page(stack_bottom)) {
     return false;

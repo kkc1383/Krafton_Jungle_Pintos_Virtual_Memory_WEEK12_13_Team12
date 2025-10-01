@@ -197,9 +197,6 @@ static int system_open(const char *file) {
   if (curr->fd_max < new_fd) curr->fd_max = new_fd;  // fd_max 갱신
 
   curr->fd_table[new_fd] = open_file;
-  // rox 구현
-  if (!strcmp(curr->name, file)) file_deny_write(open_file);  // 본인 자신을 열려고 하면 deny_write 설정
-
   return new_fd;
 }
 static int system_filesize(int fd) {

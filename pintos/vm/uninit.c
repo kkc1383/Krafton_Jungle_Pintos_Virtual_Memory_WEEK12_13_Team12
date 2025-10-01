@@ -46,9 +46,12 @@ static bool uninit_initialize(struct page *page, void *kva) {
   /* Fetch first, page_initialize may overwrite the values */
   vm_initializer *init = uninit->init;
   struct lazy_load_arg *aux = (struct lazy_load_arg *)uninit->aux;
-
+  if (!uninit->page_initializer(page, uninit->type, kva)) {
+    free(aux);
+    return false;
+  }
   /* TODO: You may need to fix this function. */
-  return uninit->page_initializer(page, uninit->type, kva) && (init ? init(page, aux) : true);
+  return (init ? init(page, aux) : true);
 }
 
 /* Free the resources hold by uninit_page. Although most of pages are transmuted
@@ -59,4 +62,7 @@ static void uninit_destroy(struct page *page) {
   struct uninit_page *uninit UNUSED = &page->uninit;
   /* TODO: Fill this function.
    * TODO: If you don't have anything to do, just return. */
+  if (uninit->aux) {
+    free(uninit->aux);
+  }
 }

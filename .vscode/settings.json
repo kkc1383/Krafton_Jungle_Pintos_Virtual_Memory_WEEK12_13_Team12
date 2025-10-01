@@ -44,6 +44,9 @@
         "vm.h": "c",
         "uninit.h": "c",
         "anon.h": "c",
-        "hash.h": "c"
+        "hash.h": "c",
+        "limits": "c",
+        "disk.h": "c",
+        "vaddr.h": "c"
     }
 }

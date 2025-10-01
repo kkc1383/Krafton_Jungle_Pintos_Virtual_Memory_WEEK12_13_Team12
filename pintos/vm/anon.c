@@ -29,8 +29,7 @@ void vm_anon_init(void) {
   swap_disk = disk_get(1, 1);
   if (!swap_disk) PANIC("SWAP DISK NOT FOUND");
   // swap table도 만들어야 함
-  size_t swap_page_cnt =
-      disk_size(swap_disk) * DISK_SECTOR_SIZE / PGSIZE;  // disk에 들어갈 총 page 갯수
+  size_t swap_page_cnt = disk_size(swap_disk) * DISK_SECTOR_SIZE / PGSIZE;  // disk에 들어갈 총 page 갯수
   swap_table = bitmap_create(swap_page_cnt);
   if (!swap_table) PANIC("CANNOT CREATE SWAP TABLE");  // bitmap 생성 실패 시
   lock_init(&swap_lock);                               // swap table 접근 시 동기화 용 락
@@ -48,12 +47,20 @@ bool anon_initializer(struct page *page, enum vm_type type UNUSED, void *kva UNU
 }
 
 /* Swap in the page by read contents from the swap disk. */
-static bool anon_swap_in(struct page *page, void *kva) {
-  struct anon_page *anon_page = &page->anon;
-}
+static bool anon_swap_in(struct page *page, void *kva) { struct anon_page *anon_page = &page->anon; }
 
 /* Swap out the page by writing contents to the swap disk. */
 static bool anon_swap_out(struct page *page) { struct anon_page *anon_page = &page->anon; }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
-static void anon_destroy(struct page *page) { struct anon_page *anon_page = &page->anon; }
+static void anon_destroy(struct page *page) {
+  struct anon_page *anon_page = &page->anon;
+  if (page->frame) {
+    // free(page->frame);
+  }
+  if (anon_page->swap_index != -1) {
+    lock_acquire(&swap_lock);
+    bitmap_set(swap_table, anon_page->swap_index, false);
+    lock_release(&swap_lock);
+  }
+}
