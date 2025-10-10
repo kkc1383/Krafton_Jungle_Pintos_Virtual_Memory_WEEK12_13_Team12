@@ -163,21 +163,7 @@ static struct frame *vm_get_frame(void) {
 /* Growing the stack. */
 static bool vm_stack_growth(void *addr) {
   void *stack_bottom = pg_round_down(addr);
-
-  struct thread *curr = thread_current();
-  // 범위 확인
-  if (addr > USER_STACK || addr < USER_STACK - (1 << 20)) return false;
-
-  // page 생성, spt 등록 해줌
-  if (!vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true)) {  // VM_MARKER_0은 나중에
-    return false;
-  }
-  // frame 생성, 페이지 테이블 등록 해줌
-  if (!vm_claim_page(stack_bottom)) {
-    return false;
-  }
-  curr->tf.rsp = stack_bottom;  //일단 페이지 하나만큼만 빈공간 벌려놓고, 그 다음부터 자율적으로 싣는것
-  return true;
+  return vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, true);
 }
 
 /* Handle the fault on write_protected page */
@@ -190,12 +176,22 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr, bool user UNUS
   struct page *page = NULL;
   /* TODO: Validate the fault */
   /* TODO: Your code goes here */
+
   page = spt_find_page(spt, addr);  // 알아서 pg_round_down 해줌
-  if (!page) {
-    if (not_present) {
-      // void* rsp= user ? f->rsp : ;
+  if (!page) {                      // spt에 페이지가 없을 때
+    // 메모리에 매핑되어 있지 않다면 (not_present가 false라면 readonly 페이지에 쓰려고 할때)
+    // addr이 스택 성장인지 범위 확인
+    if (addr > USER_STACK || addr < USER_STACK - (1 << 20)) return false;
+    void *rsp = user ? f->rsp : thread_current()->rsp;
+    if (addr < rsp - 8) return false;
+    if (vm_stack_growth(addr)) {
+      page = spt_find_page(spt, addr);  // 알아서 pg_round_down 해줌
+    } else
+      return false;
+  } else {                        // page!=NULL 일 때
+    if (!not_present && write) {  // read-only 페이지에 쓰려고 했을 때
+      system_exit(-1);
     }
-    return false;  // spt에 없는 주소(invalid 주소)
   }
 
   return vm_do_claim_page(page);
@@ -271,7 +267,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
         if (page->uninit.init) {
           struct lazy_load_arg *parent_aux = page->uninit.aux;
           struct lazy_load_arg *child_aux = malloc(sizeof(struct lazy_load_arg));
-          child_aux->file = file_duplicate(parent_aux->file);
+          child_aux->file = file_reopen(parent_aux->file);
           child_aux->ofs = parent_aux->ofs;
           child_aux->read_bytes = parent_aux->read_bytes;
           child_aux->zero_bytes = parent_aux->zero_bytes;

@@ -232,6 +232,8 @@ static void __do_fork(struct fork_aux *aux) {
     current->fd_max = i;  // fd_max 갱신
   }
   // process_init(); //왜 있는지 전혀 모르겠는 함수 일단 지웁시다.
+  current->running_file = file_reopen(parent->running_file);  // 부모의 runningfile 을 복제함
+  current->running_file->pos = parent->running_file->pos;
 
   /* 정상적으로 fork 되었음을 알림 */
   lock_acquire(&parent->children_lock);
@@ -375,6 +377,7 @@ static void process_cleanup(void) {
 
 #ifdef VM
   supplemental_page_table_kill(&curr->spt);
+  // file_close(curr->running_file);
 #endif
 
   uint64_t *pml4;
@@ -738,7 +741,7 @@ static bool lazy_load_segment(struct page *page, void *aux) {
   memset(page->frame->kva + lla_aux->read_bytes, 0, lla_aux->zero_bytes);
 
   // 할거 다 했으니 aux 반납
-  free(aux);
+  free(lla_aux);
   return true;
 }
 

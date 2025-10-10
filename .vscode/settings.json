@@ -48,6 +48,7 @@
         "limits": "c",
         "disk.h": "c",
         "vaddr.h": "c",
-        "tss.h": "c"
+        "tss.h": "c",
+        "exception.h": "c"
     }
 }

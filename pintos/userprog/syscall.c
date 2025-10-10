@@ -62,6 +62,7 @@ void syscall_init(void) {
 
 /* The main system call interface */
 void syscall_handler(struct intr_frame *f UNUSED) {
+  thread_current()->rsp = f->rsp;  // thread구조체에 유저의 레지스터 정보 받아오기
   // TODO: Your implementation goes here.
   switch (f->R.rax) {
     case SYS_HALT:
@@ -217,7 +218,10 @@ static int system_read(int fd, void *buffer, unsigned size) {
   struct thread *curr = thread_current();
   if (fd < 0 || fd >= curr->fd_size) return -1;  // fd가 유효하지 않은 숫자일 경우
   validate_user_string(buffer);
-
+#ifdef VM
+  struct page *page = spt_find_page(&curr->spt, buffer);
+  if (page && !page->writable) system_exit(-1);
+#endif
   int read_bytes;
   if (curr->fd_table[fd] == get_std_in()) {  //표준입력인 경우
     read_bytes = input_getc();
@@ -247,7 +251,6 @@ static int system_write(int fd, const void *buffer, unsigned size) {
     int write_bytes;
     struct file *write_file = curr->fd_table[fd];
     if (!write_file) return -1;
-    if (write_file->deny_write) return 0;
     lock_acquire(&filesys_lock);  // 동시접근을 막기 위해
     write_bytes = file_write(write_file, buffer, size);
     lock_release(&filesys_lock);
@@ -333,7 +336,8 @@ static void validate_user_string(const char *str) {
     system_exit(-1);                         // 종료
   }
   if (pml4_get_page(thread_current()->pml4, str) == NULL) {  // 해당 프로세스의 page테이블에 등록되어 있지 않는 주소라면
-    system_exit(-1);                                         //종료
+    if (str < thread_current()->rsp - 8)  // 스택 성장도 못할 경우에
+      system_exit(-1);                    //종료
   }
 }
 static int expend_fd_table(struct thread *curr, size_t size) {  // MAXFILES의 배수로 ㄱㄱ
