@@ -49,6 +49,8 @@
         "disk.h": "c",
         "vaddr.h": "c",
         "tss.h": "c",
-        "exception.h": "c"
-    }
+        "exception.h": "c",
+        "main.h": "c"
+    },
+    "chatgpt.openOnStartup": true
 }

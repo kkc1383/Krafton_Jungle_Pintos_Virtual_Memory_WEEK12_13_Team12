@@ -130,7 +130,8 @@ struct thread {
 #ifdef VM
   /* Table for whole virtual memory owned by thread. */
   struct supplemental_page_table spt;
-  void *rsp; /* 스택포인터 저장용 */
+  void *rsp;              /* 스택포인터 저장용 */
+  struct list mmap_list;  // mmap 관리를 위한 리스트
 #endif
   struct file *running_file; /* 현재 스레드가 실행중인 파일 */
   /* Owned by thread.c. */

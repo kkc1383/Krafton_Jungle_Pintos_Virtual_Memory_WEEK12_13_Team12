@@ -32,10 +32,6 @@ enum vm_type page_get_type(struct page *page) {
   switch (ty) {
     case VM_UNINIT:
       return VM_TYPE(page->uninit.type);
-    case VM_ANON:
-      return VM_TYPE(page->anon.type);
-    case VM_FILE:
-      return VM_TYPE(page->file.type);
     default:
       return ty;
   }
@@ -114,8 +110,8 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED, struct page *pa
 }
 
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
-  // hash_delete(&spt->hash_table, &page->hash_elem);  // hash에서 제거
-  vm_dealloc_page(page);  // page 타입에 맞게 destroy 후 free
+  hash_delete(&spt->hash_table, &page->hash_elem);  // hash에서 제거
+  vm_dealloc_page(page);                            // page 타입에 맞게 destroy 후 free
   // return true;
 }
 
@@ -183,7 +179,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr, bool user UNUS
     // addr이 스택 성장인지 범위 확인
     if (addr > USER_STACK || addr < USER_STACK - (1 << 20)) return false;
     void *rsp = user ? f->rsp : thread_current()->rsp;
-    if (addr < rsp - 8) return false;
+    if (addr < rsp && addr != rsp - 8) return false;
     if (vm_stack_growth(addr)) {
       page = spt_find_page(spt, addr);  // 알아서 pg_round_down 해줌
     } else

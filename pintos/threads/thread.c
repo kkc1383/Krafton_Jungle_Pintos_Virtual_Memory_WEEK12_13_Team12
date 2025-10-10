@@ -635,6 +635,10 @@ static void init_thread(struct thread *t, const char *name, int priority) {
   /* mlfqs 멤버 초기화 */
   t->nice = 0;
   t->recent_cpu = INT_TO_FP(0);
+
+#ifdef VM
+  list_init(&t->mmap_list);
+#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

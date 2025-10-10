@@ -30,6 +30,8 @@ static int system_write(int fd, const void *buffer, unsigned size);
 static void system_seek(int fd, unsigned position);
 static unsigned system_tell(int fd);
 static int system_dup2(int oldfd, int newfd);
+static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+static void system_munmap(void *addr);
 
 static void validate_user_string(const char *str);
 static int expend_fd_table(struct thread *curr, size_t size);
@@ -109,6 +111,12 @@ void syscall_handler(struct intr_frame *f UNUSED) {
       break;
     case SYS_DUP2:
       f->R.rax = system_dup2(f->R.rdi, f->R.rsi);
+      break;
+    case SYS_MMAP:
+      f->R.rax = system_mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+      break;
+    case SYS_MUNMAP:
+      system_munmap(f->R.rdi);
       break;
     default:
       printf("unknown! %d\n", f->R.rax);
@@ -330,14 +338,27 @@ static int system_dup2(int oldfd, int newfd) {
   if (newfd > curr->fd_max) curr->fd_max = newfd;  // fd_max 갱신
   return newfd;
 }
+static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
+  struct thread *curr = thread_current();
+
+  // fd 유효성 체크
+  if (fd < 0 || fd >= curr->fd_size || curr->fd_table[fd] == NULL) return NULL;
+  if (curr->fd_table[fd] == get_std_in() || curr->fd_table[fd] == get_std_out()) return NULL;
+
+  if (!is_user_vaddr(addr)) return NULL;  // addr이 사용자 영역이 아닐 경우(mmap-kernel)
+  return do_mmap(addr, length, writable, thread_current()->fd_table[fd], offset);
+}
+static void system_munmap(void *addr) { do_munmap(addr); }
 
 static void validate_user_string(const char *str) {
   if (str == NULL || !is_user_vaddr(str)) {  //주소가 NULL이거나, kernel 영역이거나
     system_exit(-1);                         // 종료
   }
-  if (pml4_get_page(thread_current()->pml4, str) == NULL) {  // 해당 프로세스의 page테이블에 등록되어 있지 않는 주소라면
-    if (str < thread_current()->rsp - 8)  // 스택 성장도 못할 경우에
-      system_exit(-1);                    //종료
+  if (!spt_find_page(&thread_current()->spt, str)) {  // 해당 프로세스의 page테이블에 등록되어 있지 않는 주소라면
+    if (str > USER_STACK)                             // 스택 성장도 아닐 경우(read-bad-ptr 디버깅)
+      system_exit(-1);
+    if (str < thread_current()->rsp && str != thread_current()->rsp - 8)  //스택 성장도 안될 때
+      system_exit(-1);                                                    //종료
   }
 }
 static int expend_fd_table(struct thread *curr, size_t size) {  // MAXFILES의 배수로 ㄱㄱ

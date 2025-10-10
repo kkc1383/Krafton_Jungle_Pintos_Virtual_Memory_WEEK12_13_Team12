@@ -376,8 +376,13 @@ static void process_cleanup(void) {
   struct thread *curr = thread_current();
 
 #ifdef VM
+  while (!list_empty(&curr->mmap_list)) {  // mmap_list에 있는 모든 mmap들 munmap시킴
+    struct list_elem *e = list_begin(&curr->mmap_list);
+    struct mmap_file *mmap = list_entry(e, struct mmap_file, elem);
+    do_munmap(mmap->addr);
+  }
+
   supplemental_page_table_kill(&curr->spt);
-  // file_close(curr->running_file);
 #endif
 
   uint64_t *pml4;
@@ -485,7 +490,9 @@ static bool load(const char **argv, struct intr_frame *if_) {
   process_activate(thread_current());
 
   /* Open executable file. */
+  lock_acquire(&filesys_lock);
   file = filesys_open(file_name);
+  lock_release(&filesys_lock);
   if (file == NULL) {
     printf("load: %s: open failed\n", file_name);
     goto done;
@@ -780,6 +787,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
     aux->ofs = ofs;
     aux->read_bytes = page_read_bytes;  //그냥 read_bytes가 아니라 이 페이지에서 읽을 페이지 바이트가 필요함
     aux->zero_bytes = page_zero_bytes;
+    aux->mmap = NULL;
     if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, aux)) {
       free(aux);  // 실패 시에 aux 구조체 반환 해야함.
       return false;
