@@ -47,6 +47,7 @@ struct page {
 struct frame {
   void *kva;
   struct page *page;
+  struct list_elem elem;  // frame_list용 (evict용)
 };
 
 /* The function table for page operations.

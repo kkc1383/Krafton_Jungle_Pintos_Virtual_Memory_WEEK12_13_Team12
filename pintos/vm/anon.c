@@ -3,6 +3,7 @@
 #include <bitmap.h>
 
 #include "devices/disk.h"
+#include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "vm/vm.h"
 
@@ -47,10 +48,59 @@ bool anon_initializer(struct page *page, enum vm_type type UNUSED, void *kva UNU
 }
 
 /* Swap in the page by read contents from the swap disk. */
-static bool anon_swap_in(struct page *page, void *kva) { struct anon_page *anon_page = &page->anon; }
+static bool anon_swap_in(struct page *page, void *kva) {
+  struct anon_page *anon_page = &page->anon;
+
+  // swap_index 확인
+  if (anon_page->swap_index == -1) {
+    return false;  // swap_out 된 적 없음
+  }
+
+  // disk에서 페이지 읽기(8 sectors)
+  size_t slot = anon_page->swap_index;
+  for (int i = 0; i < 8; i++) {
+    disk_read(swap_disk, slot * 8 + i, kva + i * DISK_SECTOR_SIZE);
+  }
+  // swap table에서 slot해제
+  lock_acquire(&swap_lock);
+  bitmap_set(swap_table, slot, false);
+  lock_release(&swap_lock);
+
+  // swap_index 초기화
+  anon_page->swap_index = -1;
+
+  return true;
+}
 
 /* Swap out the page by writing contents to the swap disk. */
-static bool anon_swap_out(struct page *page) { struct anon_page *anon_page = &page->anon; }
+static bool anon_swap_out(struct page *page) {
+  struct anon_page *anon_page = &page->anon;
+
+  // swap table에서 빈 slot 찾기
+  lock_acquire(&swap_lock);
+  size_t slot = bitmap_scan(swap_table, 0, 1, false);
+  if (slot == BITMAP_ERROR) {
+    lock_release(&swap_lock);
+    return false;  // swap disk가 가득 참
+  }
+  bitmap_set(swap_table, slot, true);  // 사용중으로 표시
+  lock_release(&swap_lock);
+
+  // disk에 페이지 쓰기( 한 페이지 = 8 sector)
+  for (int i = 0; i < 8; i++) {
+    disk_write(swap_disk, slot * 8 + i, page->frame->kva + i * DISK_SECTOR_SIZE);
+  }
+  // swap_index 저장
+  anon_page->swap_index = slot;
+
+  //페이지 테이블에서 매핑 제거
+  pml4_clear_page(thread_current()->pml4, page->va);
+
+  // frame 연결 해제
+  page->frame = NULL;
+
+  return true;
+}
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
 static void anon_destroy(struct page *page) {

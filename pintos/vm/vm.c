@@ -11,6 +11,10 @@
 #include "userprog/process.h"
 #include "vm/inspect.h"
 
+static struct list frame_table;       //모든 frame들의 리스트
+static struct lock frame_table_lock;  // frame_table 동기화용
+static struct list_elem *clock_hand;  // Clock algorithm용 포인터
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void vm_init(void) {
@@ -22,6 +26,9 @@ void vm_init(void) {
   register_inspect_intr();
   /* DO NOT MODIFY UPPER LINES. */
   /* TODO: Your code goes here. */
+  list_init(&frame_table);
+  lock_init(&frame_table_lock);
+  clock_hand = NULL;
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -117,19 +124,74 @@ void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
 
 /* Get the struct frame, that will be evicted. */
 static struct frame *vm_get_victim(void) {
-  struct frame *victim = NULL;
   /* TODO: The policy for eviction is up to you. */
+  lock_acquire(&frame_table_lock);
 
+  if (list_empty(&frame_table)) {
+    lock_release(&frame_table_lock);
+    return NULL;
+  }
+
+  // clock algorithm(second chance)
+  if (clock_hand == NULL || clock_hand == list_end(&frame_table)) {
+    clock_hand = list_begin(&frame_table);
+  }
+  struct frame *victim = NULL;
+  struct list_elem *start = clock_hand;
+
+  while (true) {
+    struct frame *f = list_entry(clock_hand, struct frame, elem);
+
+    if (f->page == NULL) {
+      //페이지가 없는 frame은 스킵
+      clock_hand = list_next(clock_hand);
+      if (clock_hand == list_end(&frame_table)) {
+        clock_hand = list_begin(&frame_table);
+      }
+      continue;
+    }
+
+    // accessed bit 확인
+    if (pml4_is_accessed(thread_current()->pml4, f->page->va)) {
+      // accessed bit이 1이면 0으로 바꾸고 다음으로
+      pml4_set_accessed(thread_current()->pml4, f->page->va, false);
+      clock_hand = list_next(clock_hand);
+      if (clock_hand == list_end(&frame_table)) {
+        clock_hand = list_begin(&frame_table);
+      }
+    } else {
+      // accessed bit이 0이면 victim 선정
+      victim = f;
+      clock_hand = list_next(clock_hand);
+      break;
+    }
+    //한 바퀴 돌았으면 첫 번째 것 선택
+    if (clock_hand == start) {
+      victim = f;
+      break;
+    }
+  }
+  lock_release(&frame_table_lock);
   return victim;
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *vm_evict_frame(void) {
-  struct frame *victim UNUSED = vm_get_victim();
+  struct frame *victim = vm_get_victim();
   /* TODO: swap out the victim and return the evicted frame. */
+  if (victim == NULL) {
+    return NULL;
+  }
+  struct page *page = victim->page;
 
-  return NULL;
+  // swap out 호출
+  if (!swap_out(page)) {
+    return NULL;  // swap_out 실패
+  }
+  // frame과 page 연결 해제(swap_out에서 이미 했지만 확인)
+  victim->page = NULL;
+  return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -142,14 +204,25 @@ static struct frame *vm_get_frame(void) {
 
   int8_t *kaddr = palloc_get_page(PAL_USER);
   if (kaddr == NULL) {
-    PANIC("vm_get_frame: palloc_get_page(PAL_USER) failed (todo: eviction)");
+    frame = vm_evict_frame();  // evict 하고 frame 재사용
+    if (frame == NULL) {
+      PANIC("vm_get_frame: eviction failed");
+    }
+    return frame;
   }
+
   if ((frame = malloc(sizeof *frame)) == NULL) {
+    palloc_free_page(kaddr);
     PANIC("vm_get_frame:  malloc(sizeof *frame) failed");
   }
 
   frame->kva = kaddr;
   frame->page = NULL;
+
+  // frame_table에 추가
+  lock_acquire(&frame_table_lock);
+  list_push_back(&frame_table, &frame->elem);
+  lock_release(&frame_table_lock);
 
   ASSERT(frame != NULL);
   ASSERT(frame->page == NULL);
