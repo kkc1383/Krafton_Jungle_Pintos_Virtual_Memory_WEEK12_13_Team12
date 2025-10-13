@@ -219,6 +219,10 @@ static struct frame *vm_get_frame(void) {
   frame->kva = kaddr;
   frame->page = NULL;
 
+  /* cow용 추가 */
+  frame->ref_count=1;
+  lock_init(&frame->lock);
+  
   // frame_table에 추가
   lock_acquire(&frame_table_lock);
   list_push_back(&frame_table, &frame->elem);
@@ -324,8 +328,8 @@ void supplemental_page_table_init(struct supplemental_page_table *spt) {
 }
 
 /* Copy supplemental page table from src to dst */
-bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
-                                  struct supplemental_page_table *src UNUSED) {
+bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
+                                  struct supplemental_page_table *src , struct thread* parent) {
   struct hash_iterator i;
   hash_first(&i, src);
   while (hash_next(&i)) {
@@ -353,23 +357,44 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst UNUSED,
         }
         break;
       case VM_ANON:
-        // page 할당하고 spt에 집어넣음
-        if (!vm_alloc_page(VM_ANON, page->va, page->writable)) return false;
-        // 방금 할당한 page 가져오기
-        struct page *anon_new_page = spt_find_page(dst, page->va);
-        if (!anon_new_page) return false;
+        // Stack 페이지는 COW 적용하지 않고 즉시 복사
+        if(page->operations->type&VM_MARKER_0){
+          //기존 방식대로 복사
+          if(!vm_alloc_page(VM_ANON|VM_MARKER_0, page->va, page->writable))
+            return false;
+          struct page *new_page = spt_find_page(dst,page->va);
+          if(!vm_do_claim_page(new_page)) return false;
+          if(page->frame!=NULL){
+            memcpy(new_page->frame->kva,page->frame->kva,PGSIZE);
+          }
+        }
+        else{ //Stack 페이지가 아닐 경우
+          //COW 적용: 프레임 공유
+          if(!vm_alloc_page(VM_ANON, page->va,page->writable))
+            return false;
+          struct page *new_page= spt_find_page(dst, page->va);
 
-        // 페이지를 페이지 테이블에 등록하고 프레임에 올림
-        if (!vm_do_claim_page(anon_new_page)) return false;
+          if(page->frame!=NULL){
+            //부모 페이지가 이미 메모리에 있는 경우
+            //자식도 같은 프레임을 가리키도록 설정 (이게 핵심)
+            new_page->frame=page->frame;
+            
+            //프레임 참조 카운터 증가
+            lock_acquire(&page->frame->lock);
+            page->frame->ref_count++;
+            lock_release(&page->frame->lock);
 
-        //부모 데이터 복사
-        if (page->frame != NULL) {
-          memcpy(anon_new_page->frame->kva, page->frame->kva, PGSIZE);
-        } else {  // swap_out 된 페이지
-          // page->frame = vm_get_frame();
-          // if (!page->frame) return false;
-          // if (!swap_in(page, page->frame->kva)) return false;
-          // memcpy(anon_new_page->frame->kva, page->frame->kva, PGSIZE);
+            //양쪽 모두 COW 플래그 설정
+            page->is_cow=true;
+            new_page->is_cow=true;
+
+            //양쪽 모두 read-only로 설정
+            pml4_set_page(thread_current()->pml4, new_page->va,new_page->frame->kva, false);
+            //부모 페이지도 read-only로 변경
+            pml4_set_page(parent->pml4,page->va,page->frame->kva,false);
+          }
+          // page->frame==NULL 인 경우는 swap out 된 상태
+          // 이 경우는 나중에 swap in 시 처리
         }
         break;
       case VM_FILE:
