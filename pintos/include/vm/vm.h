@@ -31,6 +31,9 @@ struct page {
   struct hash_elem hash_elem;
   bool writable;
 
+  /* cow 용 추가 필드 */
+  bool is_cow;
+
   /* Per-type data are binded into the union.
    * Each function automatically detects the current union */
   union {
@@ -48,6 +51,10 @@ struct frame {
   void *kva;
   struct page *page;
   struct list_elem elem;  // frame_list용 (evict용)
+
+  /* cow용 추가 필드 */
+  int ref_count;
+  struct lock lock;
 };
 
 /* The function table for page operations.
