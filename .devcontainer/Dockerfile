@@ -6,8 +6,6 @@ ENV TZ=Asia/Seoul LANG=ko_KR.UTF-8 LANGUAGE=ko_KR.UTF-8
 # Install dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update \
-    # && echo "tzdata tzdata/Areas select Asia" | debconf-set-selections \
-    # && echo "tzdata tzdata/Zones/Asia select Seoul" | debconf-set-selections \
     && apt-get install -y \
     locales tzdata \
     build-essential \
@@ -18,9 +16,16 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     sudo \
     qemu-system-x86 \
     python3 \
-    && locale-gen ko_KR.UTF-8 && update-locale LANG=ko_KR.UTF-8 
-# && apt-get clean \
-# && rm -rf /var/lib/apt/lists/*
+    curl \
+    && locale-gen ko_KR.UTF-8 && update-locale LANG=ko_KR.UTF-8
+
+# Install Node.js 20.x (LTS)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    node --version && npm --version
+
+# Cleanup (선택사항 - 이미지 크기 줄이기)
+# RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash jungle && usermod -aG sudo jungle
 RUN echo "jungle ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/jungle
