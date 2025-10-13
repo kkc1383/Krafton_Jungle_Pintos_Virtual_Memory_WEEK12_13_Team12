@@ -85,8 +85,8 @@ static void file_backed_destroy(struct page *page) {
   if (pml4_is_dirty(thread_current()->pml4, page->va) && page->frame) {
     file_write_at(file_page->file, page->frame->kva, file_page->read_bytes, file_page->ofs);
   }
-  pml4_clear_page(thread_current()->pml4, page->va);
   //페이지 테이블에서 매핑 제거
+  pml4_clear_page(thread_current()->pml4, page->va);
   if (page->frame != NULL) {
     //물리 메모리 해제
     palloc_free_page(page->frame->kva);

@@ -12,7 +12,7 @@
 #include "vm/inspect.h"
 
 static struct list frame_table;       //모든 frame들의 리스트
-static struct lock frame_table_lock;  // frame_table 동기화용
+struct lock frame_table_lock;  // frame_table 동기화용 (COW : static 제거, extern 접근 목적)
 static struct list_elem *clock_hand;  // Clock algorithm용 포인터
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -81,6 +81,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void *upage, bool writabl
         goto err;
     }
     page->writable = writable;  // writable 필드 채우기
+    page->is_cow=false;
 
     /* TODO: Insert the page into the spt. */
     if (!spt_insert_page(spt, page)) {  // (디버깅 추가됨)
@@ -119,7 +120,7 @@ bool spt_insert_page(struct supplemental_page_table *spt UNUSED, struct page *pa
 void spt_remove_page(struct supplemental_page_table *spt, struct page *page) {
   hash_delete(&spt->hash_table, &page->hash_elem);  // hash에서 제거
   vm_dealloc_page(page);                            // page 타입에 맞게 destroy 후 free
-  // return true;
+  
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -251,8 +252,8 @@ static bool vm_handle_wp(struct page *page) {
   if(ref_count==1){
     lock_release(&old_frame->lock);
     page->is_cow=false;
-    pml4_set_page(thread_current()->pml4,page->va,old_frame->kva,page->writable);
-    return true;
+    pml4_clear_page(thread_current()->pml4,page->va);
+    return pml4_set_page(thread_current()->pml4,page->va,old_frame->kva,page->writable);
   }
   lock_release(&old_frame->lock);
 
@@ -268,8 +269,10 @@ static bool vm_handle_wp(struct page *page) {
   new_frame->page=page;
   page->frame=new_frame;
 
-  //페이지 테이블 업데이트 (쓰기 가능으로) 
-  pml4_set_page(thread_current()->pml4,page->va,new_frame->kva,page->writable);
+  //페이지 테이블 업데이트 (쓰기 가능으로)
+  pml4_clear_page(thread_current()->pml4,page->va); 
+  if(!pml4_set_page(thread_current()->pml4,page->va,new_frame->kva,page->writable))
+    return false;
 
   //COW 플래그 해제
   page->is_cow=false;
@@ -279,7 +282,15 @@ static bool vm_handle_wp(struct page *page) {
   old_frame->ref_count--;
   ref_count=old_frame->ref_count;
   lock_release(&old_frame->lock);
-  
+
+  if(ref_count==0){
+    lock_acquire(&frame_table_lock);
+    list_remove(&old_frame->elem);
+    lock_release(&frame_table_lock);
+
+    palloc_free_page(old_frame->kva);
+    free(old_frame);
+  }
   return true;
 }
 
@@ -435,9 +446,13 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
             new_page->is_cow=true;
 
             //양쪽 모두 read-only로 설정
-            pml4_set_page(thread_current()->pml4, new_page->va,new_page->frame->kva, false);
+            pml4_clear_page(thread_current()->pml4,new_page->va);
+            if(!pml4_set_page(thread_current()->pml4, new_page->va,new_page->frame->kva, false))
+              return false;
             //부모 페이지도 read-only로 변경
-            pml4_set_page(parent->pml4,page->va,page->frame->kva,false);
+            pml4_clear_page(parent->pml4,page->va);
+            if(!pml4_set_page(parent->pml4,page->va,page->frame->kva,false))
+              return false;
           }
           // page->frame==NULL 인 경우는 swap out 된 상태
           // 이 경우는 나중에 swap in 시 처리

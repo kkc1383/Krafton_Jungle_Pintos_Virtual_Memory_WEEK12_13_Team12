@@ -50,7 +50,8 @@
         "vaddr.h": "c",
         "tss.h": "c",
         "exception.h": "c",
-        "main.h": "c"
+        "main.h": "c",
+        "lib.h": "c"
     },
     "chatgpt.openOnStartup": true
 }

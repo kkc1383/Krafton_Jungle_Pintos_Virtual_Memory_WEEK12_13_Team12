@@ -106,8 +106,30 @@ static bool anon_swap_out(struct page *page) {
 static void anon_destroy(struct page *page) {
   struct anon_page *anon_page = &page->anon;
   if (page->frame) {
-    // free(page->frame);
+    struct frame *frame=page->frame;
+
+    //참조 카운터 감소
+    lock_acquire(&frame->lock);
+    frame->ref_count--;
+    int ref_count=frame->ref_count;
+    lock_release(&frame->lock);
+
+    //참조 카운터가 0이면 프레임 해제
+    if(ref_count==0){
+      //frame table에서 제거
+      lock_acquire(&frame_table_lock);
+      list_remove(&frame->elem);
+      lock_release(&frame_table_lock);
+
+      //물리 메모리 해제
+      palloc_free_page(frame->kva);
+      free(frame);
+    }
+
+    //페이지 테이블에서 매핑 제거
+    pml4_clear_page(thread_current()->pml4,page->va);
   }
+  //swap out 되어 있다면 swap slot 해제
   if (anon_page->swap_index != -1) {
     lock_acquire(&swap_lock);
     bitmap_set(swap_table, anon_page->swap_index, false);
