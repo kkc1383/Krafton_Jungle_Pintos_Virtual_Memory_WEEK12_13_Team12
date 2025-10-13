@@ -346,6 +346,7 @@ static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t 
   if (curr->fd_table[fd] == get_std_in() || curr->fd_table[fd] == get_std_out()) return NULL;
 
   if (!is_user_vaddr(addr)) return NULL;  // addr이 사용자 영역이 아닐 경우(mmap-kernel)
+  if((int)length<0) return NULL; //length가 음수이면 탈락
   return do_mmap(addr, length, writable, thread_current()->fd_table[fd], offset);
 }
 static void system_munmap(void *addr) { do_munmap(addr); }

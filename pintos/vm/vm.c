@@ -222,7 +222,7 @@ static struct frame *vm_get_frame(void) {
   /* cow용 추가 */
   frame->ref_count=1;
   lock_init(&frame->lock);
-  
+
   // frame_table에 추가
   lock_acquire(&frame_table_lock);
   list_push_back(&frame_table, &frame->elem);
@@ -240,7 +240,48 @@ static bool vm_stack_growth(void *addr) {
 }
 
 /* Handle the fault on write_protected page */
-static bool vm_handle_wp(struct page *page UNUSED) {}
+static bool vm_handle_wp(struct page *page) {
+  struct frame *old_frame=page->frame;
+
+  //참조 카운터 확인
+  lock_acquire(&old_frame->lock);
+  int ref_count=old_frame->ref_count;
+
+  //마지막 참조자라면 복사 불필요
+  if(ref_count==1){
+    lock_release(&old_frame->lock);
+    page->is_cow=false;
+    pml4_set_page(thread_current()->pml4,page->va,old_frame->kva,page->writable);
+    return true;
+  }
+  lock_release(&old_frame->lock);
+
+  // 참조자가 아직 있다면
+  // 새 프레임 할당
+  struct frame *new_frame=vm_get_frame();
+  if(!new_frame) return false;
+
+  //기존 프레임에서 데이터 복사
+  memcpy(new_frame->kva,old_frame->kva,PGSIZE);
+
+  //페이지를 새 프레임에 연결
+  new_frame->page=page;
+  page->frame=new_frame;
+
+  //페이지 테이블 업데이트 (쓰기 가능으로) 
+  pml4_set_page(thread_current()->pml4,page->va,new_frame->kva,page->writable);
+
+  //COW 플래그 해제
+  page->is_cow=false;
+
+  //기존 프레임의 참조 카운터 감소
+  lock_acquire(&old_frame->lock);
+  old_frame->ref_count--;
+  ref_count=old_frame->ref_count;
+  lock_release(&old_frame->lock);
+  
+  return true;
+}
 
 /* Return true on success */
 bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr, bool user UNUSED, bool write UNUSED,
@@ -263,7 +304,12 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr, bool user UNUS
       return false;
   } else {                        // page!=NULL 일 때
     if (!not_present && write) {  // read-only 페이지에 쓰려고 했을 때
-      system_exit(-1);
+      if(page->is_cow){
+        //COW 페이지라면 vm_handle_wp 호출
+        return vm_handle_wp(page);
+      } else {
+        system_exit(-1);
+      }
     }
   }
 

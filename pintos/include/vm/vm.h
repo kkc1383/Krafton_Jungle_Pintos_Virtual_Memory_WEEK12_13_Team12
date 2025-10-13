@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "vm/anon.h"
 #include "vm/file.h"
 #include "vm/types.h"
