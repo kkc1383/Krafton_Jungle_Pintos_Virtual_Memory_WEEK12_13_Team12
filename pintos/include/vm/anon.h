@@ -6,6 +6,7 @@ enum vm_type;
 
 struct anon_page {
   int swap_index; /* swap table에서의 bitmap index*/
+  bool is_stack; /* 스택 구간의 페이지인지 */
 };
 
 void vm_anon_init(void);

@@ -10,6 +10,7 @@
 #include "threads/mmu.h"
 #include "userprog/process.h"
 #include "vm/inspect.h"
+#include "threads/thread.h"
 
 static struct list frame_table;       //모든 frame들의 리스트
 struct lock frame_table_lock;  // frame_table 동기화용 (COW : static 제거, extern 접근 목적)
@@ -295,9 +296,9 @@ static bool vm_handle_wp(struct page *page) {
 }
 
 /* Return true on success */
-bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr, bool user UNUSED, bool write UNUSED,
-                         bool not_present UNUSED) {
-  struct supplemental_page_table *spt UNUSED = &thread_current()->spt;
+bool vm_try_handle_fault(struct intr_frame *f , void *addr, bool user UNUSED, bool write,
+                         bool not_present ) {
+  struct supplemental_page_table *spt  = &thread_current()->spt;
   struct page *page = NULL;
   /* TODO: Validate the fault */
   /* TODO: Your code goes here */
@@ -319,7 +320,7 @@ bool vm_try_handle_fault(struct intr_frame *f UNUSED, void *addr, bool user UNUS
         //COW 페이지라면 vm_handle_wp 호출
         return vm_handle_wp(page);
       } else {
-        system_exit(-1);
+        return false; // 알아서 page_fault 나고 종료될거라
       }
     }
   }
@@ -354,7 +355,7 @@ static bool vm_do_claim_page(struct page *page) {
   page->frame = frame;
 
   /* TODO: Insert page table entry to map page's VA to frame's PA. */
-  bool succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);  //(디버깅 pml4)
+  bool succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
 
   if (!succ) {
     frame->page = NULL;
@@ -397,6 +398,8 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
         if (page->uninit.init) {
           struct lazy_load_arg *parent_aux = page->uninit.aux;
           struct lazy_load_arg *child_aux = malloc(sizeof(struct lazy_load_arg));
+          if(!child_aux) return false;
+
           child_aux->file = file_reopen(parent_aux->file);
           child_aux->ofs = parent_aux->ofs;
           child_aux->read_bytes = parent_aux->read_bytes;
@@ -415,7 +418,7 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
         break;
       case VM_ANON:
         // Stack 페이지는 COW 적용하지 않고 즉시 복사
-        if(page->operations->type&VM_MARKER_0){
+        if(page->anon.is_stack){
           //기존 방식대로 복사
           if(!vm_alloc_page(VM_ANON|VM_MARKER_0, page->va, page->writable))
             return false;
@@ -427,15 +430,17 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
         }
         else{ //Stack 페이지가 아닐 경우
           //COW 적용: 프레임 공유
-          if(!vm_alloc_page(VM_ANON, page->va,page->writable))
+          if(!vm_alloc_page(VM_ANON, page->va, page->writable))
             return false;
           struct page *new_page= spt_find_page(dst, page->va);
-
           if(page->frame!=NULL){
             //부모 페이지가 이미 메모리에 있는 경우
             //자식도 같은 프레임을 가리키도록 설정 (이게 핵심)
             new_page->frame=page->frame;
-            
+
+            // anon_page로 만들어줌(fork-recursive 디버깅)
+            anon_initializer(new_page,VM_ANON,new_page->frame->kva);
+
             //프레임 참조 카운터 증가
             lock_acquire(&page->frame->lock);
             page->frame->ref_count++;

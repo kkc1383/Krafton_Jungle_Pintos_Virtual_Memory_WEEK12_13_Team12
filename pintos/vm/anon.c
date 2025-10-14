@@ -37,13 +37,13 @@ void vm_anon_init(void) {
 }
 
 /* Initialize the file mapping */
-bool anon_initializer(struct page *page, enum vm_type type UNUSED, void *kva UNUSED) {
+bool anon_initializer(struct page *page, enum vm_type type, void *kva UNUSED) {
   /* Set up the handler */
   page->operations = &anon_ops;
 
   struct anon_page *anon_page = &page->anon;
   anon_page->swap_index = -1;  //아직 swap_table에 들어가지 않으니 -1로 초기화
-
+  anon_page->is_stack=type&VM_MARKER_0; //스택인지 아닌지 확인
   return true;  //어느 기점에서 false를 반환 시켜야할 지 모르겠다.
 }
 

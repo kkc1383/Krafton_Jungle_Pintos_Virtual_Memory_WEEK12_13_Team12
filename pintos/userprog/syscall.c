@@ -74,12 +74,15 @@ void syscall_handler(struct intr_frame *f UNUSED) {
       system_exit(f->R.rdi);
       break;
     case SYS_FORK:
+      // printf("[FORK] thread name : %s, fork name : %s\n",thread_current()->name,f->R.rdi);
       f->R.rax = system_fork(f->R.rdi, f);
       break;
     case SYS_EXEC:
+    // printf("[EXEC] thread name : %s, exec name : %s\n",thread_current()->name,f->R.rdi);
       f->R.rax = system_exec(f->R.rdi);
       break;
     case SYS_WAIT:
+      // printf("[WAIT] thread name : %s, wait pid : %d\n",thread_current()->name,f->R.rdi);
       f->R.rax = system_wait(f->R.rdi);
       break;
     case SYS_CREATE:
@@ -89,15 +92,18 @@ void syscall_handler(struct intr_frame *f UNUSED) {
       f->R.rax = system_remove(f->R.rdi);
       break;
     case SYS_OPEN:
+      // printf("[OPEN] thread name : %s, open filename : %s\n",thread_current()->name,f->R.rdi);
       f->R.rax = system_open(f->R.rdi);
       break;
     case SYS_FILESIZE:
       f->R.rax = system_filesize(f->R.rdi);
       break;
     case SYS_READ:
+      // printf("[READ] thread name : %s\n",thread_current()->name);
       f->R.rax = system_read(f->R.rdi, f->R.rsi, f->R.rdx);
       break;
     case SYS_WRITE:
+      // printf("[WRITE] thread name : %s\n",thread_current()->name);
       f->R.rax = system_write(f->R.rdi, f->R.rsi, f->R.rdx);
       break;
     case SYS_SEEK:
@@ -107,6 +113,7 @@ void syscall_handler(struct intr_frame *f UNUSED) {
       f->R.rax = system_tell(f->R.rdi);
       break;
     case SYS_CLOSE:
+      // printf("[CLOSE] thread name : %s\n",thread_current()->name);
       system_close(f->R.rdi);
       break;
     case SYS_DUP2:
@@ -344,7 +351,7 @@ static void *system_mmap(void *addr, size_t length, int writable, int fd, off_t 
   if (fd < 0 || fd >= curr->fd_size || curr->fd_table[fd] == NULL) return NULL;
   if (curr->fd_table[fd] == get_std_in() || curr->fd_table[fd] == get_std_out()) return NULL;
 
-  if (!is_user_vaddr(addr)) return NULL;  // addr이 사용자 영역이 아닐 경우(mmap-kernel)
+  if (!is_user_vaddr(addr)|| !is_user_vaddr(addr+length)) return NULL;  // addr이 사용자 영역이 아닐 경우(mmap-kernel)
   if((int)length<0) return NULL; //length가 음수이면 탈락
   return do_mmap(addr, length, writable, thread_current()->fd_table[fd], offset);
 }

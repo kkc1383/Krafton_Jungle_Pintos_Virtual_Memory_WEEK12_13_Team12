@@ -34,7 +34,6 @@ struct page {
 
   /* cow 용 추가 필드 */
   bool is_cow;
-
   /* Per-type data are binded into the union.
    * Each function automatically detects the current union */
   union {

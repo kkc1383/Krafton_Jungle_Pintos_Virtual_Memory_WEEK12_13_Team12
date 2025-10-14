@@ -20,7 +20,6 @@ test_main (void)
 
 	CHECK (memcmp (buf, large, strlen (buf)) == 0, "check data consistency");
 	pa_parent = get_phys_addr((void*)large);
-
 	child = fork ("child");
 	if (child == 0) {
 		CHECK (memcmp (buf, large, strlen (buf)) == 0, "check data consistency");

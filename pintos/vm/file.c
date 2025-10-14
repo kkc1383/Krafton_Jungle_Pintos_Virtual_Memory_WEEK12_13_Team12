@@ -106,27 +106,26 @@ void *do_mmap(void *addr, size_t length, int writable, struct file *file, off_t 
   if (file == NULL)  // 파일이 없으면 실패
     return NULL;
   // 파일 재오픈(독립적인 offset 유지)
-  struct file *reopend_file = file_reopen(file);
-  if (reopend_file == NULL) return NULL;
+  struct file *reopened_file = file_reopen(file);
+  if (reopened_file == NULL) return NULL;
 
   //파일 길이 확인
-  off_t file_len = file_length(reopend_file);
+  off_t file_len = file_length(reopened_file);
   if (file_len == 0 || offset >= file_len) {  //전체 파일길이가 0이거나 offset보다 작다면 실패
-    file_close(reopend_file);
+    file_close(reopened_file);
     return NULL;
   }
 
   // mmap_file 구조체 할당
   struct mmap_file *mmap = malloc(sizeof(struct mmap_file));
   if (mmap == NULL) {
-    file_close(reopend_file);
+    file_close(reopened_file);
     return NULL;
   }
   // mmap_file 구조체 필드 초기화
   mmap->addr = addr;
-  mmap->file = reopend_file;
+  mmap->file = reopened_file;
   mmap->length = length;
-  mmap->page_cnt = 0;
 
   //페이지 단위로 lazy_loading 설정
   //읽을 수 있는 남은 파일 길이가 length보다 작다면 남은 만큼만
@@ -140,7 +139,7 @@ void *do_mmap(void *addr, size_t length, int writable, struct file *file, off_t 
     //이미 매핑된 페이지인지 체크
     if (spt_find_page(&thread_current()->spt, upage) != NULL) {
       //실패, 이후 정리 필요
-      cleanup_mmap_pages(addr, upage, mmap, reopend_file);
+      cleanup_mmap_pages(addr, upage, mmap, reopened_file);
       return NULL;
     }
     // 페이지 크기 이하만 읽을 수 있음
@@ -151,10 +150,10 @@ void *do_mmap(void *addr, size_t length, int writable, struct file *file, off_t 
     struct lazy_load_arg *aux = malloc(sizeof(struct lazy_load_arg));
     if (aux == NULL) {
       //정리 필요
-      cleanup_mmap_pages(addr, upage, mmap, reopend_file);
+      cleanup_mmap_pages(addr, upage, mmap, reopened_file);
       return NULL;
     }
-    aux->file = reopend_file;
+    aux->file = reopened_file;
     aux->ofs = ofs;
     aux->read_bytes = page_read_bytes;
     aux->zero_bytes = page_zero_bytes;
@@ -162,11 +161,10 @@ void *do_mmap(void *addr, size_t length, int writable, struct file *file, off_t 
 
     // VM_FILE 페이지 생성
     if (!vm_alloc_page_with_initializer(VM_FILE, upage, writable, mmap_file_load, aux)) {
-      cleanup_mmap_pages(addr, upage, mmap, reopend_file);
+      cleanup_mmap_pages(addr, upage, mmap, reopened_file);
       free(aux);
       return NULL;
     }
-    mmap->page_cnt++;
 
     read_bytes -= page_read_bytes;
     zero_bytes = (zero_bytes < page_zero_bytes) ? 0 : zero_bytes - page_zero_bytes;

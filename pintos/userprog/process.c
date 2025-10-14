@@ -264,8 +264,15 @@ int process_exec(void *f_name) {
   char **argv = palloc_get_page(0);  //스택 프레임에 들어있어서 process_cleanup()시에 소멸하게 된다.
   char *token, *save_ptr;
 
+  char *f_name_copy=palloc_get_page(0);
+  if(!f_name_copy){
+    palloc_free_page(argv);
+    return -1;
+  }
+  strlcpy(f_name_copy,f_name,PGSIZE);
+
   int i = 0;
-  for (token = strtok_r(f_name, " ", &save_ptr); token != NULL;
+  for (token = strtok_r(f_name_copy, " ", &save_ptr); token != NULL;
        token = strtok_r(NULL, " ", &save_ptr)) {           // 공백이 있는 만큼
     argv[i] = malloc((strlen(token) + 1) * sizeof(char));  // 인자 하나 당 한 줄씩 할당
     memcpy(argv[i++], token, strlen(token) + 1);           // 값 옮겨 쓰기, 널 문자 포함해서 복사

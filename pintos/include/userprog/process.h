@@ -8,7 +8,6 @@ struct lazy_load_arg {
   off_t ofs;            // 해당 파일의 어디부터 읽어야 하는지 오프셋
   uint32_t read_bytes;  // 몇 바이트를 읽어야 하는지
   uint32_t zero_bytes;  // 몇 바이트를 0으로 채워야 하는지
-  //   void *kva;            // 데이터를 실제로 올려야 하는 주소
   struct mmap_file *mmap;  // mmap에서만 사용 나머지는 null
 };
 
