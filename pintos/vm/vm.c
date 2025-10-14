@@ -459,11 +459,48 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
             if(!pml4_set_page(parent->pml4,page->va,page->frame->kva,false))
               return false;
           }
-          // page->frame==NULL 인 경우는 swap out 된 상태
-          // 이 경우는 나중에 swap in 시 처리
+          else if(page->anon.swap_index!=-1){ //page->frame==NULL인 경우는 swap out 된 상태
+            //swap out 된 페이지의 경우
+            if(!vm_alloc_page(VM_ANON,page->va,page->writable))
+              return false;
+            struct page *new_page =spt_find_page(dst,page->va);
+
+            //swap_index 복사(같은 swap slot을 가리킴)
+            new_page->anon.swap_index=page->anon.swap_index;
+
+            //COW 설정
+            new_page->is_cow=true;
+            page->is_cow=true;
+
+            lock_acquire(&swap_lock);
+            swap_table[page->anon.swap_index]++;
+            lock_release(&swap_lock);
+          }
         }
         break;
       case VM_FILE:
+        if(page->file.file){
+          //lazy_load_arg 생성
+          struct lazy_load_arg * child_aux=malloc(sizeof(struct lazy_load_arg));
+          if(!child_aux) return false;
+
+          child_aux->file=file_reopen(page->file.file);
+          if(!child_aux->file){
+            free(child_aux);
+            return false;
+          }
+          child_aux->ofs=page->file.ofs;
+          child_aux->read_bytes=page->file.read_bytes;
+          child_aux->zero_bytes=page->file.zero_bytes;
+          child_aux->mmap=NULL; //fork에서는 mmap 공유하지 않음
+
+          //VM_FILE 타입으로 lazy loading 페이지 생성
+          if(!vm_alloc_page_with_initializer(VM_FILE,page->va,page->writable,lazy_load_segment,child_aux)){
+            file_close(child_aux->file);
+            free(child_aux);
+            return false;
+          }
+        }
         break;
     }
   }

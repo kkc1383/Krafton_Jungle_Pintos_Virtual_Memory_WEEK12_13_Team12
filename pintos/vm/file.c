@@ -11,7 +11,7 @@ static void file_backed_destroy(struct page *page);
 
 //헬퍼 함수
 static void cleanup_mmap_pages(void *start_addr, void *end_addr, struct mmap_file *mmap, struct file *file);
-static bool mmap_file_load(struct page *page, void *aux);
+// static bool mmap_file_load(struct page *page, void *aux);
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations file_ops = {
@@ -160,7 +160,7 @@ void *do_mmap(void *addr, size_t length, int writable, struct file *file, off_t 
     aux->mmap = mmap;
 
     // VM_FILE 페이지 생성
-    if (!vm_alloc_page_with_initializer(VM_FILE, upage, writable, mmap_file_load, aux)) {
+    if (!vm_alloc_page_with_initializer(VM_FILE, upage, writable, lazy_load_segment, aux)) {
       cleanup_mmap_pages(addr, upage, mmap, reopened_file);
       free(aux);
       return NULL;
@@ -175,22 +175,22 @@ void *do_mmap(void *addr, size_t length, int writable, struct file *file, off_t 
   list_push_back(&thread_current()->mmap_list, &mmap->elem);
   return addr;
 }
-static bool mmap_file_load(struct page *page, void *aux) {
-  struct lazy_load_arg *lla_aux = (struct lazy_load_arg *)aux;  //포인터 형 맞춰 주고
+// static bool mmap_file_load(struct page *page, void *aux) {
+//   struct lazy_load_arg *lla_aux = (struct lazy_load_arg *)aux;  //포인터 형 맞춰 주고
 
-  // file에서 필요한 만큼만 읽는다. 읽어야 할 만큼 못 읽었으면 실패
-  file_seek(lla_aux->file, lla_aux->ofs);  // offset 설정
-  if (file_read(lla_aux->file, page->frame->kva, lla_aux->read_bytes) != (uint32_t)lla_aux->read_bytes) {
-    free(aux);     // aux 구조체 반환
-    return false;  // 실패했음을 알림
-  }
-  // page단위 이므로 남는 부분을 0으로 채움
-  memset(page->frame->kva + lla_aux->read_bytes, 0, lla_aux->zero_bytes);
+//   // file에서 필요한 만큼만 읽는다. 읽어야 할 만큼 못 읽었으면 실패
+//   file_seek(lla_aux->file, lla_aux->ofs);  // offset 설정
+//   if (file_read(lla_aux->file, page->frame->kva, lla_aux->read_bytes) != (uint32_t)lla_aux->read_bytes) {
+//     free(aux);     // aux 구조체 반환
+//     return false;  // 실패했음을 알림
+//   }
+//   // page단위 이므로 남는 부분을 0으로 채움
+//   memset(page->frame->kva + lla_aux->read_bytes, 0, lla_aux->zero_bytes);
 
-  // 할거 다 했으니 aux 반납
-  free(lla_aux);
-  return true;
-}
+//   // 할거 다 했으니 aux 반납
+//   free(lla_aux);
+//   return true;
+// }
 static void cleanup_mmap_pages(void *start_addr, void *end_addr, struct mmap_file *mmap, struct file *file) {
   void *cleanup_addr = start_addr;
   while (cleanup_addr < end_addr) {

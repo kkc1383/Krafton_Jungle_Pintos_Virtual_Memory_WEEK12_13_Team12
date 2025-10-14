@@ -3,6 +3,8 @@
 #include "vm/types.h"
 struct page;
 enum vm_type;
+extern int* swap_table;
+extern struct lock swap_lock;
 
 struct anon_page {
   int swap_index; /* swap table에서의 bitmap index*/

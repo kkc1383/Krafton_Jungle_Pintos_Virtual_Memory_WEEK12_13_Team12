@@ -21,8 +21,9 @@ static const struct page_operations anon_ops = {
     .type = VM_ANON,
 };
 
-static struct bitmap *swap_table;  // swap table, 각 페이지 별 사용 가능한 지 확인용
-static struct lock swap_lock;      // swap table 접근 시 동기화를 위해 사용
+int *swap_table;  // swap table, 각 페이지 별 사용 가능한 지 확인용
+static size_t swap_slot_cnt; //총 swap slot 갯수
+struct lock swap_lock;      // swap table 접근 시 동기화를 위해 사용
 
 /* Initialize the data for anonymous pages */
 void vm_anon_init(void) {
@@ -30,8 +31,8 @@ void vm_anon_init(void) {
   swap_disk = disk_get(1, 1);
   if (!swap_disk) PANIC("SWAP DISK NOT FOUND");
   // swap table도 만들어야 함
-  size_t swap_page_cnt = disk_size(swap_disk) * DISK_SECTOR_SIZE / PGSIZE;  // disk에 들어갈 총 page 갯수
-  swap_table = bitmap_create(swap_page_cnt);
+  swap_slot_cnt = disk_size(swap_disk) * DISK_SECTOR_SIZE / PGSIZE;  // disk에 들어갈 총 page 갯수
+  swap_table = calloc(swap_slot_cnt,sizeof(int));
   if (!swap_table) PANIC("CANNOT CREATE SWAP TABLE");  // bitmap 생성 실패 시
   lock_init(&swap_lock);                               // swap table 접근 시 동기화 용 락
 }
@@ -63,7 +64,11 @@ static bool anon_swap_in(struct page *page, void *kva) {
   }
   // swap table에서 slot해제
   lock_acquire(&swap_lock);
-  bitmap_set(swap_table, slot, false);
+  swap_table[slot]--;
+
+  if(swap_table[slot]==0){
+    //slot이 완전히 해제됨
+  }
   lock_release(&swap_lock);
 
   // swap_index 초기화
@@ -78,12 +83,19 @@ static bool anon_swap_out(struct page *page) {
 
   // swap table에서 빈 slot 찾기
   lock_acquire(&swap_lock);
-  size_t slot = bitmap_scan(swap_table, 0, 1, false);
+  size_t slot = BITMAP_ERROR; //SIZE_MAX와 같음
+  for(size_t i=0;i<swap_slot_cnt;i++){
+    if(swap_table[i]==0){
+      slot=i;
+      swap_table[i]=1;// 참조 카운트 1로 설정
+      break;
+    }
+  }
+
   if (slot == BITMAP_ERROR) {
     lock_release(&swap_lock);
     return false;  // swap disk가 가득 참
   }
-  bitmap_set(swap_table, slot, true);  // 사용중으로 표시
   lock_release(&swap_lock);
 
   // disk에 페이지 쓰기( 한 페이지 = 8 sector)
@@ -132,7 +144,8 @@ static void anon_destroy(struct page *page) {
   //swap out 되어 있다면 swap slot 해제
   if (anon_page->swap_index != -1) {
     lock_acquire(&swap_lock);
-    bitmap_set(swap_table, anon_page->swap_index, false);
+    swap_table[anon_page->swap_index]--;
+    //참조 카운트가 0이 되면 자동으로 해제됨 (다음 swap_out에서 재사용 가능)
     lock_release(&swap_lock);
   }
 }
