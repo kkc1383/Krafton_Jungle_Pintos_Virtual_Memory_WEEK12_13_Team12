@@ -251,10 +251,11 @@ static bool vm_handle_wp(struct page *page) {
 
   //마지막 참조자라면 복사 불필요
   if(ref_count==1){
-    lock_release(&old_frame->lock);
     page->is_cow=false;
     pml4_clear_page(thread_current()->pml4,page->va);
-    return pml4_set_page(thread_current()->pml4,page->va,old_frame->kva,page->writable);
+    bool result= pml4_set_page(thread_current()->pml4,page->va,old_frame->kva,page->writable);
+    lock_release(&old_frame->lock);
+    return result;
   }
   lock_release(&old_frame->lock);
 
@@ -355,7 +356,9 @@ static bool vm_do_claim_page(struct page *page) {
   page->frame = frame;
 
   /* TODO: Insert page table entry to map page's VA to frame's PA. */
-  bool succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+  // COW 페이지는 read-only로 매핑해야함
+  bool writable = page->is_cow ? false : page->writable;
+  bool succ = pml4_set_page(thread_current()->pml4, page->va, frame->kva, writable);
 
   if (!succ) {
     frame->page = NULL;
@@ -395,10 +398,14 @@ bool supplemental_page_table_copy(struct supplemental_page_table *dst ,
     switch (page->operations->type) {
       case VM_UNINIT:
         struct page *init_new_page = malloc(sizeof(struct page));
+        if(!init_new_page) return false;
         if (page->uninit.init) {
           struct lazy_load_arg *parent_aux = page->uninit.aux;
           struct lazy_load_arg *child_aux = malloc(sizeof(struct lazy_load_arg));
-          if(!child_aux) return false;
+          if(!child_aux){
+            free(init_new_page);
+            return false;
+          }
 
           child_aux->file = file_reopen(parent_aux->file);
           child_aux->ofs = parent_aux->ofs;
