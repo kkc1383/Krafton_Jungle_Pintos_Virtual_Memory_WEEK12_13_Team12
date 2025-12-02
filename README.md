@@ -287,13 +287,6 @@ if (ref_count == 1) {
 - [pintos/vm/anon.c](pintos/vm/anon.c) - `anon_destroy()` COW 지원
 - [pintos/userprog/process.c](pintos/userprog/process.c) - `supplemental_page_table_copy()`
 
-**Git 커밋 히스토리:**
-- `d81e2b2`: page에 is_cow, frame에 ref_count/lock 추가
-- `b5a9a3c`: 스택 제외 익명 페이지 COW 구현
-- `b74665d`: vm_handle_wp() write-protect fault 처리
-- `5048205`: 부모 페이지 테이블 관리 완료
-- `7d049c4`: 스왑된 COW 페이지 처리
-
 ---
 
 ## 주요 설계 결정사항
@@ -373,21 +366,10 @@ target remote localhost:1234
 
 ---
 
-## 팀 정보
-
-- **프로젝트**: KAIST Pintos Project 3 - Virtual Memory
-- **브랜치**: `kkc1383_COW`
-- **주요 커밋**:
-  - `546695c`: 마지막 수정
-  - `7d049c4`: swap_out된 VM_ANON/VM_FILE 페이지 COW 구현
-  - `234bea1`: 올패스 완료
-  - `5048205`: COW 구현 완료
-
----
-
 ## 참고 자료
 
 - [KAIST Pintos 공식 문서](https://casys-kaist.github.io/pintos-kaist/)
 - [Pintos Project 3: Virtual Memory](https://casys-kaist.github.io/pintos-kaist/project3/introduction.html)
 - Clock Algorithm (Second Chance Page Replacement)
 - Copy-on-Write in Modern Operating Systems
+
