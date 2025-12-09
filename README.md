@@ -2,7 +2,18 @@
 
 본 프로젝트는 KAIST의 Pintos OS 교육용 프로젝트 중 **Virtual Memory(가상 메모리)** 시스템을 구현한 프로젝트입니다.
 
-공식 문서: [https://casys-kaist.github.io/pintos-kaist/project1/introduction.html](https://casys-kaist.github.io/pintos-kaist/project1/introduction.html)
+공식 문서: [https://casys-kaist.github.io/pintos-kaist/project3/introduction.html](https://casys-kaist.github.io/pintos-kaist/project3/introduction.html)
+
+## 📎 관련 프로젝트
+본 프로젝트는 KAIST PintOS 시리즈 중 **Project 3 (Virtual Memory)** 에 해당하며,  
+이전 단계 프로젝트는 아래에서 확인할 수 있습니다.
+
+- **Project 1 — Thread**  
+  🔗 [https://github.com/kkc1383/Krafton_Jungle_Pintos_Thread_WEEK09_10_Team11  ](https://github.com/kkc1383/Krafton_Jungle_10th_Pintos_Thread_WEEK09_Team05)
+
+- **Project 2 — User Program**  
+  🔗 [https://github.com/kkc1383/Krafton_Jungle_10th_Pintos_User_Program_WEEK10_11_Team11  ](https://github.com/kkc1383/Krafton_Jungle_10th_Pintos_User_Program_WEEK10_11_Team11)
+
 
 ---
 
@@ -372,4 +383,5 @@ target remote localhost:1234
 - [Pintos Project 3: Virtual Memory](https://casys-kaist.github.io/pintos-kaist/project3/introduction.html)
 - Clock Algorithm (Second Chance Page Replacement)
 - Copy-on-Write in Modern Operating Systems
+
 
